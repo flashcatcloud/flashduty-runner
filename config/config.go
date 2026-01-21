@@ -128,6 +128,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("api_key is required")
 	}
 
+	if !strings.HasPrefix(c.APIKey, "fk_") {
+		return fmt.Errorf("api_key must start with 'fk_'")
+	}
+
 	if c.APIURL == "" {
 		return fmt.Errorf("API_url is required")
 	}
