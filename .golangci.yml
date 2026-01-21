@@ -48,18 +48,7 @@ formatters:
   enable:
     - gofmt
     - goimports
-  settings:
-    goimports:
-      module-path: github.com/flashcatcloud
 
 issues:
   max-issues-per-linter: 50
   max-same-issues: 10
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - noctx
-    - path: cmd/
-      linters:
-        - noctx
