@@ -7,7 +7,6 @@ run:
   concurrency: 4
 
 linters:
-  default: standard
   enable:
     - govet
     - errcheck
