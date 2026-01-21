@@ -106,6 +106,15 @@ func Load(configPath string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// Explicitly bind environment variables (required for AutomaticEnv to work without config file)
+	_ = v.BindEnv("api_key")
+	_ = v.BindEnv("api_url")
+	_ = v.BindEnv("name")
+	_ = v.BindEnv("workspace_root")
+	_ = v.BindEnv("auto_update")
+	_ = v.BindEnv("log.level")
+	_ = v.BindEnv("log.format")
+
 	// Unmarshal into config struct
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)

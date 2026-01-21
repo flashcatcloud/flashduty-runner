@@ -27,11 +27,11 @@ WORKDIR /app
 COPY --from=build /bin/flashduty-runner .
 
 # Set environment variables
-ENV FLASHDUTY_API_KEY=""
-ENV FLASHDUTY_API_URL="wss://api.flashcat.cloud/runner/ws"
+ENV FLASHDUTY_RUNNER_API_KEY=""
+ENV FLASHDUTY_RUNNER_API_URL="wss://api.flashcat.cloud/runner/ws"
 ENV FLASHDUTY_RUNNER_NAME=""
-ENV FLASHDUTY_WORKSPACE_ROOT="/workspace"
-ENV FLASHDUTY_AUTO_UPDATE="false"
+ENV FLASHDUTY_RUNNER_WORKSPACE_ROOT="/workspace"
+ENV FLASHDUTY_RUNNER_AUTO_UPDATE="false"
 
 # Create workspace directory
 VOLUME ["/workspace"]
