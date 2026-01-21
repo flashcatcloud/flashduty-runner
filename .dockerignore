@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Build output
+dist/
+output/
+coverage.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!go.md
+
+# Config examples
+*.example
+*.sample
+
+# Test files
+*_test.go
+testdata/

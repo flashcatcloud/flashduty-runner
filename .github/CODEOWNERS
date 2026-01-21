@@ -1,0 +1,8 @@
+# Default owners for everything in the repo
+* @flashcatcloud/safari-team
+
+# Workflow files
+.github/ @flashcatcloud/devops-team
+
+# Security-related files
+SECURITY.md @flashcatcloud/security-team
