@@ -1,10 +1,13 @@
 # https://golangci-lint.run/usage/configuration
+version: "2"
+
 run:
   timeout: 5m
   tests: true
   concurrency: 4
 
 linters:
+  default: standard
   enable:
     - govet
     - errcheck
@@ -22,36 +25,37 @@ linters:
     - noctx
     - prealloc
     - whitespace
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    staticcheck:
+      checks:
+        - all
+        - "-QF1008" # Allow embedded structs to be referenced by field
+        - "-ST1000" # Do not require package comments
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+formatters:
+  enable:
     - gofmt
     - goimports
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: false
-  staticcheck:
-    checks:
-      - all
-      - "-QF1008" # Allow embedded structs to be referenced by field
-      - "-ST1000" # Do not require package comments
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-      - name: package-comments
-        disabled: true
-  goimports:
-    local-prefixes: github.com/flashcatcloud
-
-output:
-  formats:
-    - name: colored-line-number
+  settings:
+    goimports:
+      module-path: github.com/flashcatcloud
 
 issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10
   exclude-rules:
     - path: _test\.go
       linters:
@@ -60,5 +64,3 @@ issues:
     - path: cmd/
       linters:
         - noctx
-  max-issues-per-linter: 50
-  max-same-issues: 10
