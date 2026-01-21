@@ -90,10 +90,10 @@ func TestWorkspace_List(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test structure
-	os.MkdirAll(filepath.Join(ws.Root(), "dir1"), 0o755)
-	os.MkdirAll(filepath.Join(ws.Root(), "dir2"), 0o755)
-	os.WriteFile(filepath.Join(ws.Root(), "file1.txt"), []byte("content"), 0o644)
-	os.WriteFile(filepath.Join(ws.Root(), "dir1", "file2.txt"), []byte("content"), 0o644)
+	_ = os.MkdirAll(filepath.Join(ws.Root(), "dir1"), 0o755)
+	_ = os.MkdirAll(filepath.Join(ws.Root(), "dir2"), 0o755)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "file1.txt"), []byte("content"), 0o644)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "dir1", "file2.txt"), []byte("content"), 0o644)
 
 	// List non-recursive
 	result, err := ws.List(ctx, &protocol.ListArgs{Path: ".", Recursive: false})
@@ -111,9 +111,9 @@ func TestWorkspace_Glob(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test files
-	os.WriteFile(filepath.Join(ws.Root(), "file1.txt"), []byte("content"), 0o644)
-	os.WriteFile(filepath.Join(ws.Root(), "file2.txt"), []byte("content"), 0o644)
-	os.WriteFile(filepath.Join(ws.Root(), "file3.log"), []byte("content"), 0o644)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "file1.txt"), []byte("content"), 0o644)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "file2.txt"), []byte("content"), 0o644)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "file3.log"), []byte("content"), 0o644)
 
 	result, err := ws.Glob(ctx, &protocol.GlobArgs{Pattern: "*.txt"})
 	require.NoError(t, err)
@@ -127,8 +127,8 @@ func TestWorkspace_Grep(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test files
-	os.WriteFile(filepath.Join(ws.Root(), "file1.txt"), []byte("hello world\nfoo bar\nhello again"), 0o644)
-	os.WriteFile(filepath.Join(ws.Root(), "file2.txt"), []byte("no match here"), 0o644)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "file1.txt"), []byte("hello world\nfoo bar\nhello again"), 0o644)
+	_ = os.WriteFile(filepath.Join(ws.Root(), "file2.txt"), []byte("no match here"), 0o644)
 
 	result, err := ws.Grep(ctx, &protocol.GrepArgs{Pattern: "hello"})
 	require.NoError(t, err)

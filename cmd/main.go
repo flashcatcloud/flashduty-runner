@@ -153,7 +153,7 @@ func runRunner() error {
 			}
 		}
 
-		client.Close()
+		_ = client.Close()
 	}()
 
 	// Run with reconnection

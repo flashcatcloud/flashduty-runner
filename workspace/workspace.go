@@ -119,7 +119,9 @@ func (w *Workspace) readFileContent(path string, size, offset, limit int64) (*pr
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	if offset < 0 {
 		offset = 0
@@ -337,7 +339,7 @@ func (w *Workspace) grepWithGo(ctx context.Context, args *protocol.GrepArgs) (*p
 				}
 				lineNum++
 			}
-			file.Close()
+			_ = file.Close()
 		}
 	}
 	return &protocol.GrepResult{Matches: results}, nil
@@ -618,13 +620,17 @@ func (w *Workspace) extractZipFile(f *zip.File, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() {
+		_ = rc.Close()
+	}()
 
 	dst, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() {
+		_ = dst.Close()
+	}()
 
 	_, err = io.Copy(dst, rc)
 	return err

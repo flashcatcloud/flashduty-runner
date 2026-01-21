@@ -93,6 +93,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, c.cfg.APIURL, header)
 	if err != nil {
 		if resp != nil {
+			_ = resp.Body.Close()
 			return fmt.Errorf("failed to connect: %w (status: %d)", err, resp.StatusCode)
 		}
 		return fmt.Errorf("failed to connect: %w", err)
@@ -101,6 +102,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	// Get worknode ID from response header
 	if resp != nil {
 		c.worknodeID = resp.Header.Get("X-Worknode-ID")
+		_ = resp.Body.Close()
 	}
 
 	c.mu.Lock()
@@ -130,8 +132,10 @@ func (c *Client) readWelcomeMessage() error {
 	}
 
 	// Set a short deadline for the welcome message
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetReadDeadline(time.Time{})
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer func() {
+		_ = conn.SetReadDeadline(time.Time{})
+	}()
 
 	_, data, err := conn.ReadMessage()
 	if err != nil {
@@ -201,7 +205,7 @@ func (c *Client) RunWithReconnect(ctx context.Context) error {
 			}
 
 			// Exponential backoff
-			delay = delay * 2
+			delay *= 2
 			if delay > maxReconnectDelay {
 				delay = maxReconnectDelay
 			}
@@ -287,14 +291,14 @@ func (c *Client) readLoop(ctx context.Context) error {
 		return fmt.Errorf("not connected")
 	}
 
-	conn.SetReadDeadline(time.Now().Add(pongWait))
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 	// Handle ping messages from server - must reply with pong and reset deadline
 	conn.SetPingHandler(func(appData string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 		// Must reply with pong - WriteControl is safe to call from handler
 		return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(writeWait))
 	})
@@ -314,7 +318,7 @@ func (c *Client) readLoop(ctx context.Context) error {
 		}
 
 		// Reset deadline on any message received
-		conn.SetReadDeadline(time.Now().Add(pongWait))
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 
 		var msg protocol.Message
 		if err := json.Unmarshal(data, &msg); err != nil {
@@ -354,7 +358,7 @@ func (c *Client) sendLoop(ctx context.Context) {
 				continue
 			}
 
-			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			data, err := json.Marshal(msg)
 			if err != nil {
 				slog.Error("failed to marshal message",
