@@ -1,84 +1,164 @@
 # Flashduty Runner
 
-[English](README.md) | 中文
+<p align="center">
+  <a href="https://github.com/flashcatcloud/flashduty-runner/actions/workflows/go.yml"><img src="https://github.com/flashcatcloud/flashduty-runner/actions/workflows/go.yml/badge.svg" alt="Go"></a>
+  <a href="https://github.com/flashcatcloud/flashduty-runner/actions/workflows/lint.yml"><img src="https://github.com/flashcatcloud/flashduty-runner/actions/workflows/lint.yml/badge.svg" alt="Lint"></a>
+  <a href="https://github.com/flashcatcloud/flashduty-runner/releases"><img src="https://img.shields.io/github/v/release/flashcatcloud/flashduty-runner" alt="Release"></a>
+  <a href="https://goreportcard.com/report/github.com/flashcatcloud/flashduty-runner"><img src="https://goreportcard.com/badge/github.com/flashcatcloud/flashduty-runner" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/flashcatcloud/flashduty-runner" alt="License"></a>
+</p>
 
-Flashduty Runner 是一个轻量级的代理程序，运行在您的环境中，代表 Flashduty AI SRE 平台执行命令和访问资源。
+<p align="center">
+  <a href="README.md">English</a> | 中文
+</p>
 
-## 功能特性
+Flashduty Runner 是一个轻量级、安全的代理程序，运行在您的环境中，代表 [Flashduty](https://flashcat.cloud) AI SRE 平台执行命令和访问资源。
 
-- **安全连接**：通过 WebSocket 使用 API Key 认证连接 Flashduty 云端
-- **工作区操作**：执行 bash 命令、读写文件、使用 grep/glob 搜索
-- **权限控制**：基于 glob 模式的命令白名单/黑名单，确保安全
-- **标签路由**：为 runner 打标签以实现任务路由（如 `k8s`、`production`）
-- **自动更新**：支持版本检查和自动二进制更新
-- **MCP 代理**：通过 runner 连接内部 MCP 服务器
+## 工作原理
+
+```
+┌──────────────────┐       WebSocket (TLS)       ┌────────────────────┐
+│  Flashduty AI    │ ◄─────────────────────────► │  Flashduty Runner  │
+│  SRE 平台        │                             │  (您的服务器)      │
+└──────────────────┘                             └────────────────────┘
+                                                          │
+                                                          ▼
+                                                 ┌────────────────────┐
+                                                 │ • 执行命令         │
+                                                 │ • 读写文件         │
+                                                 │ • MCP 工具调用     │
+                                                 └────────────────────┘
+```
+
+Runner 与 Flashduty 云端建立持久的 WebSocket 连接，接收任务请求，在本地执行并返回结果。
+
+## 安全性
+
+**所有代码完全开源** - 您可以审计每一行代码，确切了解 Runner 的行为。
+
+### 多层安全设计
+
+| 层级 | 保护措施 |
+|------|----------|
+| **传输层** | TLS 加密的 WebSocket，API Key 认证 |
+| **命令执行** | Shell 解析防止注入攻击（如 `cmd1; cmd2`） |
+| **权限控制** | 可配置的 glob 模式命令白名单/黑名单 |
+| **文件系统** | 操作限制在工作区目录内，防止符号链接逃逸 |
+
+### 权限配置
+
+Runner 使用 **glob 模式匹配** 进行命令权限控制。您可以完全控制哪些命令可以被执行。
+
+#### 方案一：严格模式（推荐用于共享环境）
+
+仅明确允许特定命令：
+
+```yaml
+permission:
+  bash:
+    "*": "deny"                  # 默认拒绝所有
+    "kubectl get *": "allow"
+    "kubectl describe *": "allow"
+    "kubectl logs *": "allow"
+    "cat *": "allow"
+    "ls *": "allow"
+```
+
+#### 方案二：信任模式（用于专属/隔离环境）
+
+如果 Runner 部署在专门用于 AI 运维的隔离环境中，您可以选择信任 AI 模型的判断：
+
+```yaml
+permission:
+  bash:
+    "*": "allow"                 # 信任 AI 模型
+    "rm -rf /": "deny"           # 如需要可阻止灾难性命令
+```
+
+此模式适用于：
+- Runner 运行在隔离的 VM/容器中，影响范围有限
+- 您信任 AI 模型的能力，希望获得最大灵活性
+- 快速响应事件比限制权限更重要
+
+#### 方案三：只读模式（仅用于监控）
+
+```yaml
+permission:
+  bash:
+    "*": "deny"
+    "cat *": "allow"
+    "head *": "allow"
+    "tail *": "allow"
+    "ls *": "allow"
+    "grep *": "allow"
+    "ps *": "allow"
+    "df *": "allow"
+    "free *": "allow"
+```
 
 ## 快速开始
 
-### 安装
-
-从 Release 页面下载适合您平台的最新版本：
+### 二进制安装
 
 ```bash
 # Linux (amd64)
-curl -LO https://github.com/flashcatcloud/flashduty-runner/releases/latest/download/flashduty-runner-linux-amd64
-chmod +x flashduty-runner-linux-amd64
-sudo mv flashduty-runner-linux-amd64 /usr/local/bin/flashduty-runner
+curl -LO https://github.com/flashcatcloud/flashduty-runner/releases/latest/download/flashduty-runner_Linux_x86_64.tar.gz
+tar -xzf flashduty-runner_Linux_x86_64.tar.gz
+sudo mv flashduty-runner /usr/local/bin/
 
-# macOS (arm64)
-curl -LO https://github.com/flashcatcloud/flashduty-runner/releases/latest/download/flashduty-runner-darwin-arm64
-chmod +x flashduty-runner-darwin-arm64
-sudo mv flashduty-runner-darwin-arm64 /usr/local/bin/flashduty-runner
+# Linux (arm64)
+curl -LO https://github.com/flashcatcloud/flashduty-runner/releases/latest/download/flashduty-runner_Linux_arm64.tar.gz
+tar -xzf flashduty-runner_Linux_arm64.tar.gz
+sudo mv flashduty-runner /usr/local/bin/
+
+# macOS (Apple Silicon)
+curl -LO https://github.com/flashcatcloud/flashduty-runner/releases/latest/download/flashduty-runner_Darwin_arm64.tar.gz
+tar -xzf flashduty-runner_Darwin_arm64.tar.gz
+sudo mv flashduty-runner /usr/local/bin/
+
+# macOS (Intel)
+curl -LO https://github.com/flashcatcloud/flashduty-runner/releases/latest/download/flashduty-runner_Darwin_x86_64.tar.gz
+tar -xzf flashduty-runner_Darwin_x86_64.tar.gz
+sudo mv flashduty-runner /usr/local/bin/
 ```
 
-### Docker 方式
+### Docker 安装
 
 ```bash
 docker run -d \
   --name flashduty-runner \
-  -e FLASHDUTY_API_KEY=your_api_key \
+  -e FLASHDUTY_RUNNER_API_KEY=your_api_key \
   -e FLASHDUTY_RUNNER_NAME=my-runner \
   -v /var/flashduty/workspace:/workspace \
-  registry.flashcat.cloud/public/flashduty-runner
+  ghcr.io/flashcatcloud/flashduty-runner:latest
 ```
 
 ### 配置
 
-在 `~/.flashduty-runner/config.yaml` 创建配置文件：
+创建 `~/.flashduty-runner/config.yaml`：
 
 ```yaml
 # Flashduty 控制台获取的 API Key（必填）
 api_key: "fk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-# Flashduty WebSocket 端点
-api_url: "wss://api.flashcat.cloud/runner/ws"
-
-# Runner 标识名称
+# Runner 显示名称（可选，默认为主机名）
 name: "prod-k8s-runner"
 
-# 任务路由标签
+# 任务路由标签（可选）
 labels:
   - k8s
   - production
-  - mysql
 
-# 工作区根目录
+# 工作区根目录（可选）
 workspace_root: "/var/flashduty/workspace"
 
-# 自动更新设置
-auto_update: true
-
-# 命令权限控制（glob 模式匹配）
+# 命令权限（参见安全性章节的选项）
 permission:
   bash:
-    "*": "deny"                  # 默认拒绝所有
-    "git *": "allow"
+    "*": "deny"
     "kubectl get *": "allow"
     "kubectl describe *": "allow"
     "kubectl logs *": "allow"
-    "grep *": "allow"
-    "cat *": "allow"
-    "ls *": "allow"
 ```
 
 ### 运行
@@ -87,104 +167,117 @@ permission:
 # 启动 runner
 flashduty-runner run
 
-# 使用自定义配置路径启动
+# 使用自定义配置启动
 flashduty-runner run --config /path/to/config.yaml
 
 # 查看版本
 flashduty-runner version
+```
 
-# 手动更新
-flashduty-runner update
+### Systemd 服务（Linux）
+
+创建 `/etc/systemd/system/flashduty-runner.service`：
+
+```ini
+[Unit]
+Description=Flashduty Runner
+After=network.target
+
+[Service]
+Type=simple
+User=flashduty
+ExecStart=/usr/local/bin/flashduty-runner run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now flashduty-runner
 ```
 
 ## 配置参考
 
-| 字段 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `api_key` | string | 是 | - | Flashduty API Key 用于认证 |
-| `api_url` | string | 否 | `wss://api.flashcat.cloud/runner/ws` | Flashduty WebSocket 端点 |
-| `name` | string | 否 | 主机名 | Runner 显示名称 |
-| `labels` | []string | 否 | [] | 任务路由的自定义标签 |
-| `workspace_root` | string | 否 | `~/.flashduty-runner/workspace` | 工作区操作的根目录 |
-| `auto_update` | bool | 否 | true | 启用自动更新 |
-| `permission.bash` | map | 否 | 全部拒绝 | 命令权限的 glob 模式 |
+| 字段 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `api_key` | 是 | - | Flashduty API Key |
+| `api_url` | 否 | `wss://api.flashcat.cloud/runner/ws` | WebSocket 端点 |
+| `name` | 否 | 主机名 | Runner 显示名称 |
+| `labels` | 否 | [] | 任务路由标签 |
+| `workspace_root` | 否 | `~/.flashduty-runner/workspace` | 工作区目录 |
+| `permission.bash` | 否 | 全部拒绝 | 命令权限规则 |
+| `log.level` | 否 | `info` | 日志级别：debug, info, warn, error |
 
-### 权限模式
+### 环境变量
 
-权限系统使用 glob 模式来控制命令执行：
+所有选项都可以通过 `FLASHDUTY_RUNNER_` 前缀的环境变量设置：
 
-```yaml
-permission:
-  bash:
-    "*": "deny"              # 默认：拒绝所有命令
-    "git *": "allow"         # 允许所有 git 命令
-    "kubectl get *": "allow" # 允许 kubectl get
-    "rm -rf *": "deny"       # 明确拒绝危险命令
+```bash
+FLASHDUTY_RUNNER_API_KEY=fk_xxx
+FLASHDUTY_RUNNER_NAME=my-runner
+FLASHDUTY_RUNNER_WORKSPACE_ROOT=/workspace
 ```
 
-**规则：**
-- 模式按顺序匹配，最后匹配的规则生效
-- `*` 匹配任意字符
-- 未匹配任何模式的命令默认被拒绝
+### 内置标签
 
-## 内置标签
+Runner 会自动添加以下标签用于路由：
 
-Runner 会自动添加以下标签：
-
-| 标签 | 说明 | 示例 |
-|------|------|------|
-| `os` | 操作系统 | `linux`、`darwin` |
-| `arch` | CPU 架构 | `amd64`、`arm64` |
-| `hostname` | 主机名 | `prod-server-01` |
-
-## 安全性
-
-- **TLS**：所有 WebSocket 连接使用 TLS 加密
-- **API Key**：通过 Flashduty API Key 进行认证
-- **权限控制**：命令执行前会检查白名单
-- **路径安全**：文件操作限制在工作区根目录内
-- **配置保护**：配置文件应设置 0600 权限
+- `os:linux` / `os:darwin` / `os:windows`
+- `arch:amd64` / `arch:arm64`
+- `hostname:<主机名>`
 
 ## 故障排除
 
 ### 连接问题
 
-1. 检查 API Key 是否有效
-2. 验证网络是否允许出站 WebSocket 连接
-3. 检查防火墙规则是否允许 443 端口
-
-### 权限被拒绝
-
-1. 检查配置中的权限模式
-2. 确认命令是否匹配某个允许模式
-3. 验证 workspace_root 的权限
-
-### Runner 未显示在线
-
-1. 在 Flashduty 控制台检查 runner 状态
-2. 验证心跳是否正在发送（检查日志）
-3. 确保 API Key 对应正确的账户
-
-## 开发
+| 症状 | 原因 | 解决方案 |
+|------|------|----------|
+| `failed to connect` | 网络问题 | 检查防火墙是否允许出站端口 443 |
+| `authentication failed` | API Key 无效 | 在 Flashduty 控制台验证 API Key |
+| Runner 未显示在线 | 连接断开 | 检查日志，验证 API Key 是否匹配账户 |
 
 ```bash
-# 克隆仓库
-git clone https://github.com/flashcatcloud/flashduty-runner.git
-cd flashduty-runner
+# 测试连通性
+curl -v https://api.flashcat.cloud/health
 
-# 安装依赖
-go mod tidy
-
-# 构建
-make build
-
-# 运行测试
-make test
-
-# 运行 linter
-make lint
+# 检查 runner 日志
+journalctl -u flashduty-runner -f
 ```
+
+### 权限问题
+
+| 症状 | 原因 | 解决方案 |
+|------|------|----------|
+| `command denied` | 命令不在白名单中 | 在 `permission.bash` 中添加模式 |
+| `path escapes workspace` | 路径遍历被阻止 | 使用 `workspace_root` 内的路径 |
+
+**权限模式规则：**
+- 模式按顺序匹配，**最后匹配的规则生效**
+- `*` 匹配任意字符
+- 空配置默认拒绝所有
+
+### 调试模式
+
+启用调试日志以查看详细的权限决策：
+
+```yaml
+log:
+  level: "debug"
+```
+
+## 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 开源协议
 
 Apache License 2.0 - 详见 [LICENSE](LICENSE)。
+
+---
+
+<p align="center">
+  由 <a href="https://flashcat.cloud">Flashcat</a> 用 ❤️ 打造
+</p>

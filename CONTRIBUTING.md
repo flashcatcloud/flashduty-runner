@@ -4,16 +4,17 @@ Thank you for your interest in contributing to Flashduty Runner! This document p
 
 ## Code of Conduct
 
-Please be respectful and constructive in all interactions. We aim to maintain a welcoming environment for all contributors.
+Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md). We aim to maintain a welcoming environment for all contributors.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Go 1.22 or later
+- Go 1.24 or later
 - Make
 - golangci-lint (for linting)
 - gofumpt (for formatting)
+- gci (for import sorting)
 
 ### Setup
 
@@ -67,7 +68,7 @@ import (
 
     "github.com/gorilla/websocket"
 
-    "github.com/flashcatcloud/flashduty-runner/internal/config"
+    "github.com/flashcatcloud/flashduty-runner/config"
 )
 ```
 
@@ -103,7 +104,7 @@ slog.Info("connected to server",
 make test
 
 # Run specific package tests
-go test -v ./internal/workspace/...
+go test -v ./workspace/...
 
 # Run with coverage
 go test -coverprofile=coverage.out ./...
@@ -152,23 +153,38 @@ docs(readme): add troubleshooting section
 ```
 flashduty-runner/
 ├── cmd/
-│   └── flashduty-runner/
-│       └── main.go              # Entry point
-├── internal/
-│   ├── config/                  # Configuration loading
-│   ├── auth/                    # API Key authentication
-│   ├── ws/                      # WebSocket client
-│   ├── workspace/               # Workspace operations
-│   ├── permission/              # Command permission check
-│   ├── mcp/                     # MCP client manager
-│   └── update/                  # Self-update logic
-├── pkg/
-│   └── protocol/                # WebSocket message protocol
+│   └── main.go              # CLI entry point (cobra)
+├── config/
+│   ├── config.go            # Configuration loading (viper)
+│   └── config_test.go       # Config tests
+├── permission/
+│   ├── permission.go        # Command permission checker
+│   └── permission_test.go   # Permission tests
+├── protocol/
+│   └── messages.go          # WebSocket message types
+├── workspace/
+│   ├── workspace.go         # Workspace operations
+│   ├── workspace_test.go    # Workspace tests
+│   ├── webfetch.go          # Web page fetching
+│   └── large_output.go      # Large output handling
+├── ws/
+│   ├── client.go            # WebSocket client
+│   └── handler.go           # Message handler
+├── mcp/
+│   ├── client.go            # MCP client manager
+│   └── transport.go         # MCP transport layer
 ├── .github/
-│   └── workflows/               # CI/CD pipelines
-├── go.mod
-├── go.sum
-├── Makefile
+│   ├── workflows/           # CI/CD pipelines
+│   │   ├── go.yml           # Go tests
+│   │   ├── lint.yml         # Linting
+│   │   ├── goreleaser.yml   # Release automation
+│   │   └── docker-publish.yml # Docker builds
+│   ├── ISSUE_TEMPLATE/      # Issue templates
+│   └── pull_request_template.md
+├── Dockerfile               # Multi-stage Docker build
+├── Makefile                 # Build automation
+├── .goreleaser.yaml         # Release configuration
+├── .golangci.yml            # Linter configuration
 └── README.md
 ```
 
@@ -176,22 +192,53 @@ flashduty-runner/
 
 ### New Workspace Operation
 
-1. Add method to `internal/workspace/workspace.go`
-2. Add message type to `pkg/protocol/messages.go`
-3. Add handler in `internal/ws/handler.go`
-4. Add tests in `internal/workspace/workspace_test.go`
+1. Add method to `workspace/workspace.go`
+2. Add message type to `protocol/messages.go`
+3. Add handler case in `ws/handler.go`
+4. Add tests in `workspace/workspace_test.go`
 5. Update README if user-facing
 
 ### New CLI Command
 
-1. Add command file in `cmd/flashduty-runner/`
-2. Register in `cmd/flashduty-runner/root.go`
+1. Add command function in `cmd/main.go`
+2. Register with `rootCmd.AddCommand()`
 3. Add tests
 4. Update README
 
+### New Configuration Option
+
+1. Add field to `config.Config` struct in `config/config.go`
+2. Update `DefaultConfig()` if needed
+3. Add validation in `Validate()` if needed
+4. Document in README
+5. Add tests in `config/config_test.go`
+
+## CI/CD
+
+### Automated Checks
+
+Every PR triggers:
+- **go.yml**: Runs `go test` with race detection
+- **lint.yml**: Runs golangci-lint
+- **code-scanning.yml**: Security scanning with CodeQL
+
+### Release Process
+
+Releases are automated via GoReleaser when a tag is pushed:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers:
+1. Cross-platform binary builds (Linux, macOS, Windows × amd64, arm64)
+2. Docker image builds and push to GHCR
+3. GitHub release creation with changelog
+
 ## Questions?
 
-- Open an issue for bugs or feature requests
+- Open an [issue](https://github.com/flashcatcloud/flashduty-runner/issues) for bugs or feature requests
 - Check existing issues before creating new ones
 - Join our community discussions
 
