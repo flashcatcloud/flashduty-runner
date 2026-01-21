@@ -6,13 +6,14 @@ toolchain go1.24.6
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
-	github.com/bmatcuk/doublestar/v4 v4.9.1
+	github.com/bmatcuk/doublestar/v4 v4.9.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/lithammer/shortuuid/v4 v4.2.0
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
+	mvdan.cc/sh/v3 v3.12.0
 )
 
 require (
@@ -44,5 +45,4 @@ require (
 	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	mvdan.cc/sh/v3 v3.12.0 // indirect
 )
