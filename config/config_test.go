@@ -27,7 +27,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &Config{
-				APIKey: "fk_test_key_12345",
+				APIKey: "test_key_12345",
 				APIURL: "wss://api.flashcat.cloud/runner/ws",
 			},
 			wantErr: "",
@@ -40,24 +40,16 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "api_key is required",
 		},
 		{
-			name: "invalid api_key prefix",
-			config: &Config{
-				APIKey: "invalid_key",
-				APIURL: "wss://api.flashcat.cloud/runner/ws",
-			},
-			wantErr: "api_key must start with 'fk_'",
-		},
-		{
 			name: "missing API_url",
 			config: &Config{
-				APIKey: "fk_test_key",
+				APIKey: "test_key",
 			},
 			wantErr: "API_url is required",
 		},
 		{
 			name: "invalid API_url scheme",
 			config: &Config{
-				APIKey: "fk_test_key",
+				APIKey: "test_key",
 				APIURL: "http://invalid.url",
 			},
 			wantErr: "API_url must start with ws:// or wss://",
@@ -107,7 +99,7 @@ func TestLoadFromFile(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-api_key: "fk_test_key_12345"
+api_key: "test_key_12345"
 API_url: "wss://test.api.cloud/runner/ws"
 name: "test-runner"
 labels:
@@ -129,7 +121,7 @@ log:
 	cfg, err := Load(configPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "fk_test_key_12345", cfg.APIKey)
+	assert.Equal(t, "test_key_12345", cfg.APIKey)
 	assert.Equal(t, "wss://test.api.cloud/runner/ws", cfg.APIURL)
 	assert.Equal(t, "test-runner", cfg.Name)
 	assert.Contains(t, cfg.Labels, "k8s")
@@ -148,18 +140,18 @@ func TestLoadWithEnvOverride(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-api_key: "fk_file_key"
+api_key: "file_key_123"
 API_url: "wss://api.flashcat.cloud/runner/ws"
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0o600)
 	require.NoError(t, err)
 
 	// Set environment variable
-	t.Setenv("FLASHDUTY_RUNNER_API_KEY", "fk_env_key")
+	t.Setenv("FLASHDUTY_RUNNER_API_KEY", "env_key_456")
 
 	cfg, err := Load(configPath)
 	require.NoError(t, err)
 
 	// Environment variable should override file value
-	assert.Equal(t, "fk_env_key", cfg.APIKey)
+	assert.Equal(t, "env_key_456", cfg.APIKey)
 }
