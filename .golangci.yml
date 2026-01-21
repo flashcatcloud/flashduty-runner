@@ -43,6 +43,14 @@ linters:
           disabled: true
         - name: package-comments
           disabled: true
+    gosec:
+      # Exclude G301 (directory permissions) - workspace needs readable directories
+      # Exclude G304 (file inclusion) - paths are validated via safePath()
+      # Exclude G306 (file permissions) - workspace files need to be readable
+      excludes:
+        - G301
+        - G304
+        - G306
 
 formatters:
   enable:

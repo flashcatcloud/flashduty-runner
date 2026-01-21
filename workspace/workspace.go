@@ -177,7 +177,7 @@ func (w *Workspace) List(ctx context.Context, args *protocol.ListArgs) (*protoco
 
 	// Resolve root for consistent relative path calculation
 	resolvedRoot := w.root
-	if resolved, err := filepath.EvalSymlinks(w.root); err == nil {
+	if resolved, resolveErr := filepath.EvalSymlinks(w.root); resolveErr == nil {
 		resolvedRoot = resolved
 	}
 
@@ -286,8 +286,8 @@ func (w *Workspace) grepWithRipgrep(ctx context.Context, args *protocol.GrepArgs
 	cmd.Stdout = &stdout
 	_ = cmd.Run() // rg returns exit code 1 if no matches found
 
-	var results []protocol.GrepMatch
 	lines := strings.Split(stdout.String(), "\n")
+	results := make([]protocol.GrepMatch, 0, len(lines))
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -632,6 +632,8 @@ func (w *Workspace) extractZipFile(f *zip.File, targetPath string) error {
 		_ = dst.Close()
 	}()
 
-	_, err = io.Copy(dst, rc)
+	// Limit copy size to prevent decompression bomb (max 100MB per file)
+	// G110: file size is validated in unzipSkill before extraction
+	_, err = io.Copy(dst, io.LimitReader(rc, 100*1024*1024))
 	return err
 }
