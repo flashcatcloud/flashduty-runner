@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -36,6 +37,12 @@ func isValidEnvVar(name string) bool {
 
 // NewSSETransport creates a new SSE transport for MCP.
 func NewSSETransport(endpoint string, headers map[string]string, dynamicHeaders map[string]string) sdk_mcp.Transport {
+	slog.Info("mcp creating SSE transport",
+		"endpoint", endpoint,
+		"headers_count", len(headers),
+		"dynamic_headers_count", len(dynamicHeaders),
+	)
+
 	return &sdk_mcp.StreamableClientTransport{
 		Endpoint: endpoint,
 		HTTPClient: &http.Client{
@@ -62,5 +69,28 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	for k, v := range t.dynamicHeaders {
 		req.Header.Set(k, v)
 	}
-	return t.base.RoundTrip(req)
+
+	slog.Debug("mcp http request",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"host", req.Host,
+	)
+
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		slog.Error("mcp http request failed",
+			"method", req.Method,
+			"url", req.URL.String(),
+			"error", err,
+		)
+		return nil, err
+	}
+
+	slog.Debug("mcp http response",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"status", resp.StatusCode,
+	)
+
+	return resp, nil
 }

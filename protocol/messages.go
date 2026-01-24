@@ -12,6 +12,9 @@ import (
 type MessageType string
 
 const (
+	// Flashduty -> Runner (initial)
+	MessageTypeWelcome MessageType = "welcome"
+
 	// Runner -> Flashduty
 	MessageTypeHeartbeat  MessageType = "heartbeat"
 	MessageTypeTaskOutput MessageType = "task.output"
@@ -49,6 +52,14 @@ func NewMessage(msgType MessageType, payload any) (*Message, error) {
 // generateMessageID generates a unique message ID with msg_ prefix.
 func generateMessageID() string {
 	return "msg_" + shortuuid.New()
+}
+
+// WelcomePayload is the payload for the welcome message sent by server after connection.
+// Contains worknode info (name, labels) managed via Web UI.
+type WelcomePayload struct {
+	WorknodeID string   `json:"worknode_id"`
+	Name       string   `json:"name"`
+	Labels     []string `json:"labels"`
 }
 
 // HeartbeatPayload is the payload for heartbeat messages.

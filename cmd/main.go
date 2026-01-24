@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/flashcatcloud/flashduty-runner/config"
 	"github.com/flashcatcloud/flashduty-runner/permission"
 	"github.com/flashcatcloud/flashduty-runner/workspace"
 	"github.com/flashcatcloud/flashduty-runner/ws"
@@ -25,7 +25,19 @@ var (
 	GitCommit = "unknown"
 )
 
-var configPath string
+// Command line flags
+var (
+	flagToken     string
+	flagURL       string
+	flagWorkspace string
+	flagLogLevel  string
+)
+
+// Default values
+const (
+	defaultURL      = "wss://api.flashcat.cloud/safari/worknode/ws"
+	defaultLogLevel = "info"
+)
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -38,13 +50,9 @@ It connects to Flashduty platform via WebSocket and executes workspace operation
 (bash, read, write, list, glob, grep, webfetch) and MCP tool calls.`,
 	}
 
-	// Global flags
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file path (default: ~/.flashduty-runner/config.yaml)")
-
 	// Add subcommands
 	rootCmd.AddCommand(runCmd())
 	rootCmd.AddCommand(versionCmd())
-	rootCmd.AddCommand(updateCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -52,14 +60,37 @@ It connects to Flashduty platform via WebSocket and executes workspace operation
 }
 
 func runCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start the runner and connect to Flashduty",
-		Long:  `Start the runner, connect to Flashduty cloud via WebSocket, and begin processing tasks.`,
+		Long: `Start the runner, connect to Flashduty cloud via WebSocket, and begin processing tasks.
+
+Examples:
+  # Basic usage (token required)
+  flashduty-runner run --token wnt_xxx
+
+  # Specify workspace directory
+  flashduty-runner run --token wnt_xxx --workspace ~/projects
+
+  # Specify custom API URL
+  flashduty-runner run --token wnt_xxx --url wss://custom.example.com/safari/worknode/ws
+
+Environment variables:
+  FLASHDUTY_RUNNER_TOKEN     - Authentication token (required if --token not provided)
+  FLASHDUTY_RUNNER_URL       - WebSocket endpoint URL
+  FLASHDUTY_RUNNER_WORKSPACE - Workspace root directory`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRunner()
 		},
 	}
+
+	// Flags with environment variable fallback
+	cmd.Flags().StringVar(&flagToken, "token", "", "Authentication token (required, env: FLASHDUTY_RUNNER_TOKEN)")
+	cmd.Flags().StringVar(&flagURL, "url", "", "WebSocket endpoint URL (env: FLASHDUTY_RUNNER_URL)")
+	cmd.Flags().StringVar(&flagWorkspace, "workspace", "", "Workspace root directory (env: FLASHDUTY_RUNNER_WORKSPACE)")
+	cmd.Flags().StringVar(&flagLogLevel, "log-level", "", "Log level: debug, info, warn, error (env: FLASHDUTY_RUNNER_LOG_LEVEL)")
+
+	return cmd
 }
 
 func versionCmd() *cobra.Command {
@@ -74,35 +105,77 @@ func versionCmd() *cobra.Command {
 	}
 }
 
-func updateCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "update",
-		Short: "Check for updates and install if available",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("Update check not implemented yet")
-			return nil
-		},
+// Config holds the runtime configuration
+type Config struct {
+	Token         string
+	URL           string
+	WorkspaceRoot string
+	LogLevel      string
+}
+
+func loadConfig() (*Config, error) {
+	cfg := &Config{}
+
+	// Token: flag > env
+	cfg.Token = flagToken
+	if cfg.Token == "" {
+		cfg.Token = os.Getenv("FLASHDUTY_RUNNER_TOKEN")
 	}
+	if cfg.Token == "" {
+		return nil, fmt.Errorf("token is required: use --token flag or set FLASHDUTY_RUNNER_TOKEN environment variable")
+	}
+
+	// URL: flag > env > default
+	cfg.URL = flagURL
+	if cfg.URL == "" {
+		cfg.URL = os.Getenv("FLASHDUTY_RUNNER_URL")
+	}
+	if cfg.URL == "" {
+		cfg.URL = defaultURL
+	}
+
+	// Workspace: flag > env > default
+	cfg.WorkspaceRoot = flagWorkspace
+	if cfg.WorkspaceRoot == "" {
+		cfg.WorkspaceRoot = os.Getenv("FLASHDUTY_RUNNER_WORKSPACE")
+	}
+	if cfg.WorkspaceRoot == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+		cfg.WorkspaceRoot = filepath.Join(homeDir, ".flashduty-runner", "workspace")
+	}
+
+	// Log level: flag > env > default
+	cfg.LogLevel = flagLogLevel
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = os.Getenv("FLASHDUTY_RUNNER_LOG_LEVEL")
+	}
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = defaultLogLevel
+	}
+
+	return cfg, nil
 }
 
 func runRunner() error {
 	// Load configuration
-	cfg, err := config.Load(configPath)
+	cfg, err := loadConfig()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
 	// Setup logging
-	setupLogging(cfg.Log)
+	setupLogging(cfg.LogLevel)
 
 	slog.Info("starting flashduty-runner",
 		"version", Version,
-		"name", cfg.Name,
-		"labels", cfg.Labels,
+		"workspace", cfg.WorkspaceRoot,
 	)
 
-	// Create permission checker
-	checker := permission.NewChecker(cfg.Permission.Bash)
+	// Create permission checker with default deny-all policy
+	checker := permission.NewChecker(map[string]string{"*": "deny"})
 
 	// Create workspace
 	wspace, err := workspace.New(cfg.WorkspaceRoot, checker)
@@ -118,7 +191,7 @@ func runRunner() error {
 	handler := ws.NewHandler(wspace)
 
 	// Create WebSocket client
-	client := ws.NewClient(cfg, handler.Handle, Version)
+	client := ws.NewClient(cfg.Token, cfg.URL, cfg.WorkspaceRoot, handler.Handle, Version)
 	handler.SetClient(client)
 
 	// Setup signal handling
@@ -168,17 +241,10 @@ func runRunner() error {
 	return nil
 }
 
-func setupLogging(logCfg config.LogConfig) {
-	level := parseLogLevel(logCfg.Level)
+func setupLogging(levelStr string) {
+	level := parseLogLevel(levelStr)
 	opts := &slog.HandlerOptions{Level: level}
-
-	var handler slog.Handler
-	if logCfg.Format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
-	}
-
+	handler := slog.NewTextHandler(os.Stdout, opts)
 	slog.SetDefault(slog.New(handler))
 }
 

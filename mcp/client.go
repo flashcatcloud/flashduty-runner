@@ -4,6 +4,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -46,9 +47,19 @@ func (m *ClientManager) GetSession(ctx context.Context, server *protocol.MCPServ
 	defer m.mu.Unlock()
 
 	serverName := server.Name
+
+	slog.Debug("mcp get session",
+		"server_name", serverName,
+		"transport", server.Transport,
+		"url", server.URL,
+		"command", server.Command,
+		"has_headers", len(server.Headers) > 0,
+		"has_dynamic_headers", len(server.DynamicHeaders) > 0,
+	)
+
 	// Check if session exists and is still valid
 	if session, ok := m.sessions[serverName]; ok {
-		// In a real implementation, we might want to check if the session is still alive
+		slog.Debug("mcp reusing existing session", "server_name", serverName)
 		return session, nil
 	}
 
@@ -63,42 +74,79 @@ func (m *ClientManager) GetSession(ctx context.Context, server *protocol.MCPServ
 	}
 
 	// Create transport
+	slog.Info("mcp creating transport",
+		"server_name", serverName,
+		"transport", server.Transport,
+		"url", server.URL,
+		"command", server.Command,
+	)
+
 	transport, err := createTransport(server)
 	if err != nil {
+		slog.Error("mcp create transport failed", "server_name", serverName, "error", err)
 		return nil, err
 	}
 
 	// Connect with timeout
+	slog.Info("mcp connecting to server", "server_name", serverName, "timeout", DefaultConnectTimeout)
+
 	connectCtx, cancel := context.WithTimeout(ctx, DefaultConnectTimeout)
 	defer cancel()
 
 	session, err := client.Connect(connectCtx, transport, nil)
 	if err != nil {
+		slog.Error("mcp connect failed",
+			"server_name", serverName,
+			"transport", server.Transport,
+			"url", server.URL,
+			"error", err,
+		)
 		return nil, fmt.Errorf("failed to connect to MCP server '%s': %w", serverName, err)
 	}
 
+	slog.Info("mcp connected successfully", "server_name", serverName)
 	m.sessions[serverName] = session
 	return session, nil
 }
 
 // CallTool executes a single MCP tool call using the manager for session persistence.
 func (m *ClientManager) CallTool(ctx context.Context, server *protocol.MCPServerConfig, toolName string, arguments map[string]any) (*sdk_mcp.CallToolResult, error) {
+	slog.Info("mcp call tool",
+		"server_name", server.Name,
+		"tool_name", toolName,
+		"arguments", arguments,
+	)
+
 	session, err := m.GetSession(ctx, server)
 	if err != nil {
+		slog.Error("mcp get session failed", "server_name", server.Name, "error", err)
 		return nil, err
 	}
 
 	callCtx, callCancel := context.WithTimeout(ctx, DefaultCallTimeout)
 	defer callCancel()
 
+	slog.Debug("mcp calling tool", "server_name", server.Name, "tool_name", toolName, "timeout", DefaultCallTimeout)
+
 	result, err := session.CallTool(callCtx, &sdk_mcp.CallToolParams{
 		Name:      toolName,
 		Arguments: arguments,
 	})
 	if err != nil {
+		slog.Error("mcp call tool failed",
+			"server_name", server.Name,
+			"tool_name", toolName,
+			"error", err,
+		)
 		m.invalidateSession(server.Name)
 		return nil, fmt.Errorf("failed to call tool '%s': %w", toolName, err)
 	}
+
+	slog.Info("mcp call tool success",
+		"server_name", server.Name,
+		"tool_name", toolName,
+		"is_error", result.IsError,
+	)
 
 	return result, nil
 }

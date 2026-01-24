@@ -196,6 +196,14 @@ func (h *Handler) executeTask(ctx context.Context, req *protocol.TaskRequestPayl
 		if err != nil {
 			return nil, fmt.Errorf("invalid mcp_call args: %w", err)
 		}
+		slog.Info("mcp_call task",
+			"server_name", args.Server.Name,
+			"server_transport", args.Server.Transport,
+			"server_url", args.Server.URL,
+			"tool_name", args.ToolName,
+			"has_headers", len(args.Server.Headers) > 0,
+			"has_dynamic_headers", len(args.Server.DynamicHeaders) > 0,
+		)
 		return h.ws.MCPCall(ctx, args)
 
 	case protocol.TaskOpMCPListTools:

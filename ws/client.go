@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -17,7 +17,6 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/flashcatcloud/flashduty-runner/config"
 	"github.com/flashcatcloud/flashduty-runner/protocol"
 )
 
@@ -46,51 +45,59 @@ type MessageHandler func(ctx context.Context, msg *protocol.Message) error
 
 // Client is the WebSocket client for Flashduty communication.
 type Client struct {
-	cfg     *config.Config
-	conn    *websocket.Conn
-	handler MessageHandler
-	version string
-	envInfo *protocol.EnvironmentInfo
+	token         string
+	apiURL        string
+	workspaceRoot string
+	handler       MessageHandler
+	version       string
+	envInfo       *protocol.EnvironmentInfo
 
 	mu          sync.Mutex
+	conn        *websocket.Conn
 	closed      bool
 	envInfoSent bool // Track if environment info has been sent
 	stopCh      chan struct{}
 	doneCh      chan struct{}
 	sendCh      chan *protocol.Message
-	worknodeID  string
+
+	// Worknode info from welcome message
+	worknodeID string
+	name       string
+	labels     []string
 }
 
 // NewClient creates a new WebSocket client.
-func NewClient(cfg *config.Config, handler MessageHandler, version string) *Client {
+func NewClient(token, apiURL, workspaceRoot string, handler MessageHandler, version string) *Client {
 	return &Client{
-		cfg:     cfg,
-		handler: handler,
-		version: version,
-		envInfo: collectEnvironmentInfo(cfg.WorkspaceRoot),
-		stopCh:  make(chan struct{}),
-		doneCh:  make(chan struct{}),
-		sendCh:  make(chan *protocol.Message, 100),
+		token:         token,
+		apiURL:        apiURL,
+		workspaceRoot: workspaceRoot,
+		handler:       handler,
+		version:       version,
+		envInfo:       collectEnvironmentInfo(workspaceRoot),
+		stopCh:        make(chan struct{}),
+		doneCh:        make(chan struct{}),
+		sendCh:        make(chan *protocol.Message, 100),
 	}
 }
 
 // Connect establishes a WebSocket connection to Flashduty.
 func (c *Client) Connect(ctx context.Context) error {
-	header := http.Header{}
-	header.Set("FD-API-KEY", c.cfg.APIKey)
-	header.Set("X-Worknode-Name", c.cfg.Name)
-	header.Set("X-Worknode-Version", c.version)
-	if c.envInfo != nil {
-		header.Set("X-Worknode-OS", c.envInfo.OS)
-		header.Set("X-Worknode-Arch", c.envInfo.Arch)
+	// Build URL with token as query parameter
+	u, err := url.Parse(c.apiURL)
+	if err != nil {
+		return fmt.Errorf("invalid API URL: %w", err)
 	}
 
+	q := u.Query()
+	q.Set("token", c.token)
+	u.RawQuery = q.Encode()
+
 	slog.Info("connecting to Flashduty",
-		"url", c.cfg.APIURL,
-		"name", c.cfg.Name,
+		"url", c.apiURL,
 	)
 
-	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, c.cfg.APIURL, header)
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, u.String(), nil)
 	if err != nil {
 		if resp != nil {
 			_ = resp.Body.Close()
@@ -99,9 +106,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	// Get worknode ID from response header
 	if resp != nil {
-		c.worknodeID = resp.Header.Get("X-Worknode-ID")
 		_ = resp.Body.Close()
 	}
 
@@ -109,19 +114,21 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.conn = conn
 	c.mu.Unlock()
 
-	// Read welcome message to get worknode ID
+	// Read welcome message to get worknode info (name, labels)
 	if err := c.readWelcomeMessage(); err != nil {
 		slog.Warn("failed to read welcome message", "error", err)
 	}
 
 	slog.Info("connected to Flashduty",
 		"worknode_id", c.worknodeID,
+		"name", c.name,
+		"labels", c.labels,
 	)
 
 	return nil
 }
 
-// readWelcomeMessage reads the initial welcome message containing the worknode ID.
+// readWelcomeMessage reads the initial welcome message containing worknode info.
 func (c *Client) readWelcomeMessage() error {
 	c.mu.Lock()
 	conn := c.conn
@@ -142,17 +149,23 @@ func (c *Client) readWelcomeMessage() error {
 		return fmt.Errorf("failed to read welcome: %w", err)
 	}
 
-	var welcome struct {
-		Type       string `json:"type"`
-		WorknodeID string `json:"worknode_id"`
-	}
-	if err := json.Unmarshal(data, &welcome); err != nil {
-		return fmt.Errorf("failed to parse welcome: %w", err)
+	var msg protocol.Message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return fmt.Errorf("failed to parse message: %w", err)
 	}
 
-	if welcome.Type == "welcome" && welcome.WorknodeID != "" {
-		c.worknodeID = welcome.WorknodeID
+	if msg.Type != protocol.MessageTypeWelcome {
+		return fmt.Errorf("expected welcome message, got %s", msg.Type)
 	}
+
+	var welcome protocol.WelcomePayload
+	if err := json.Unmarshal(msg.Payload, &welcome); err != nil {
+		return fmt.Errorf("failed to parse welcome payload: %w", err)
+	}
+
+	c.worknodeID = welcome.WorknodeID
+	c.name = welcome.Name
+	c.labels = welcome.Labels
 
 	return nil
 }
@@ -282,6 +295,16 @@ func (c *Client) WorknodeID() string {
 	return c.worknodeID
 }
 
+// Name returns the worknode name from welcome message.
+func (c *Client) Name() string {
+	return c.name
+}
+
+// Labels returns the worknode labels from welcome message.
+func (c *Client) Labels() []string {
+	return c.labels
+}
+
 func (c *Client) readLoop(ctx context.Context) error {
 	c.mu.Lock()
 	conn := c.conn
@@ -400,8 +423,8 @@ func (c *Client) heartbeatLoop(ctx context.Context) {
 func (c *Client) sendHeartbeat() {
 	payload := protocol.HeartbeatPayload{
 		WorknodeID: c.worknodeID,
-		Name:       c.cfg.Name,
-		Labels:     c.cfg.Labels,
+		Name:       c.name,
+		Labels:     c.labels,
 		Version:    c.version,
 	}
 
