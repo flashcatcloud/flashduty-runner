@@ -6,7 +6,7 @@ toolchain go1.24.6
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
-	github.com/bmatcuk/doublestar/v4 v4.9.2
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/lithammer/shortuuid/v4 v4.2.0
 	github.com/modelcontextprotocol/go-sdk v1.2.0
