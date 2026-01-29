@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -482,7 +483,7 @@ func (w *Workspace) WriteRaw(ctx context.Context, path string, content []byte) e
 }
 
 // MCPCall executes an MCP tool call.
-func (w *Workspace) MCPCall(ctx context.Context, args *protocol.MCPCallArgs) (*protocol.MCPCallResult, error) {
+func (w *Workspace) MCPCall(ctx context.Context, args *protocol.MCPCallArgs, logger *slog.Logger) (*protocol.MCPCallResult, error) {
 	// Parse arguments
 	var toolArgs map[string]any
 	if len(args.Args) > 0 {
@@ -492,7 +493,7 @@ func (w *Workspace) MCPCall(ctx context.Context, args *protocol.MCPCallArgs) (*p
 	}
 
 	// Call MCP tool
-	result, err := w.mcpMgr.CallTool(ctx, &args.Server, args.ToolName, toolArgs)
+	result, err := w.mcpMgr.CallTool(ctx, &args.Server, args.ToolName, toolArgs, logger)
 	if err != nil {
 		return nil, err
 	}

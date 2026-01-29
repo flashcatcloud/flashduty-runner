@@ -116,6 +116,7 @@ const (
 // TaskRequestPayload is the payload for task request messages.
 type TaskRequestPayload struct {
 	TaskID           string          `json:"task_id"`
+	TraceID          string          `json:"trace_id,omitempty"`
 	SourceInstanceID string          `json:"source_instance_id,omitempty"` // Safari instance ID
 	Operation        TaskOperation   `json:"operation"`
 	Args             json.RawMessage `json:"args"`

@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/flashcatcloud/flashduty-runner/log"
 	"github.com/flashcatcloud/flashduty-runner/permission"
 	"github.com/flashcatcloud/flashduty-runner/workspace"
 	"github.com/flashcatcloud/flashduty-runner/ws"
@@ -244,7 +245,7 @@ func runRunner() error {
 func setupLogging(levelStr string) {
 	level := parseLogLevel(levelStr)
 	opts := &slog.HandlerOptions{Level: level}
-	handler := slog.NewTextHandler(os.Stdout, opts)
+	handler := log.NewOrderedTextHandler(os.Stdout, opts)
 	slog.SetDefault(slog.New(handler))
 }
 

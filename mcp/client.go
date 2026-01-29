@@ -110,8 +110,12 @@ func (m *ClientManager) GetSession(ctx context.Context, server *protocol.MCPServ
 }
 
 // CallTool executes a single MCP tool call using the manager for session persistence.
-func (m *ClientManager) CallTool(ctx context.Context, server *protocol.MCPServerConfig, toolName string, arguments map[string]any) (*sdk_mcp.CallToolResult, error) {
-	slog.Info("mcp call tool",
+func (m *ClientManager) CallTool(ctx context.Context, server *protocol.MCPServerConfig, toolName string, arguments map[string]any, logger *slog.Logger) (*sdk_mcp.CallToolResult, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	logger.Info("mcp call tool",
 		"server_name", server.Name,
 		"tool_name", toolName,
 		"arguments", arguments,
@@ -119,21 +123,21 @@ func (m *ClientManager) CallTool(ctx context.Context, server *protocol.MCPServer
 
 	session, err := m.GetSession(ctx, server)
 	if err != nil {
-		slog.Error("mcp get session failed", "server_name", server.Name, "error", err)
+		logger.Error("mcp get session failed", "server_name", server.Name, "error", err)
 		return nil, err
 	}
 
 	callCtx, callCancel := context.WithTimeout(ctx, DefaultCallTimeout)
 	defer callCancel()
 
-	slog.Debug("mcp calling tool", "server_name", server.Name, "tool_name", toolName, "timeout", DefaultCallTimeout)
+	logger.Debug("mcp calling tool", "server_name", server.Name, "tool_name", toolName, "timeout", DefaultCallTimeout)
 
 	result, err := session.CallTool(callCtx, &sdk_mcp.CallToolParams{
 		Name:      toolName,
 		Arguments: arguments,
 	})
 	if err != nil {
-		slog.Error("mcp call tool failed",
+		logger.Error("mcp call tool failed",
 			"server_name", server.Name,
 			"tool_name", toolName,
 			"error", err,
@@ -142,11 +146,19 @@ func (m *ClientManager) CallTool(ctx context.Context, server *protocol.MCPServer
 		return nil, fmt.Errorf("failed to call tool '%s': %w", toolName, err)
 	}
 
-	slog.Info("mcp call tool success",
-		"server_name", server.Name,
-		"tool_name", toolName,
-		"is_error", result.IsError,
-	)
+	if result.IsError {
+		errorContent := ExtractContent(result)
+		logger.Warn("mcp tool returned error",
+			"server_name", server.Name,
+			"tool_name", toolName,
+			"error_content", errorContent,
+		)
+	} else {
+		logger.Info("mcp call tool success",
+			"server_name", server.Name,
+			"tool_name", toolName,
+		)
+	}
 
 	return result, nil
 }
@@ -210,7 +222,7 @@ func GetDefaultManager() *ClientManager {
 
 // CallTool executes a single MCP tool call using the default manager.
 func CallTool(ctx context.Context, server *protocol.MCPServerConfig, toolName string, arguments map[string]any) (*sdk_mcp.CallToolResult, error) {
-	return GetDefaultManager().CallTool(ctx, server, toolName, arguments)
+	return GetDefaultManager().CallTool(ctx, server, toolName, arguments, nil)
 }
 
 // ListTools lists available tools from an MCP server using the default manager.

@@ -94,7 +94,12 @@ func (h *Handler) handleTaskRequest(ctx context.Context, msg *protocol.Message) 
 		return fmt.Errorf("failed to unmarshal task request: %w", err)
 	}
 
-	slog.Info("received task request", "task_id", req.TaskID, "operation", req.Operation)
+	logger := slog.With(
+		"task_id", req.TaskID,
+		"trace_id", req.TraceID,
+		"operation", req.Operation,
+	)
+	logger.Info("received task request")
 
 	taskCtx, cancel := context.WithCancel(ctx)
 	h.mu.Lock()
@@ -104,7 +109,7 @@ func (h *Handler) handleTaskRequest(ctx context.Context, msg *protocol.Message) 
 	h.taskWg.Add(1)
 	go func() {
 		defer h.taskWg.Done()
-		h.executeAndSendResult(taskCtx, &req)
+		h.executeAndSendResult(taskCtx, &req, logger)
 	}()
 	return nil
 }
@@ -117,15 +122,19 @@ func (h *Handler) unregisterTask(taskID string) {
 }
 
 // executeAndSendResult executes a task and sends the result.
-func (h *Handler) executeAndSendResult(ctx context.Context, req *protocol.TaskRequestPayload) {
+func (h *Handler) executeAndSendResult(ctx context.Context, req *protocol.TaskRequestPayload, logger *slog.Logger) {
 	defer h.unregisterTask(req.TaskID)
 
-	result, err := h.executeTask(ctx, req)
+	logger.Info("executing task")
+
+	result, err := h.executeTask(ctx, req, logger)
 	if err != nil {
+		logger.Error("task execution failed", "error", err)
 		h.sendTaskResult(req.TaskID, req.SourceInstanceID, false, nil, err.Error(), 1)
 		return
 	}
 
+	logger.Info("task completed successfully")
 	h.sendTaskResult(req.TaskID, req.SourceInstanceID, true, result, "", 0)
 }
 
@@ -137,7 +146,11 @@ func parseArgs[T any](data json.RawMessage) (*T, error) {
 	return &args, nil
 }
 
-func (h *Handler) executeTask(ctx context.Context, req *protocol.TaskRequestPayload) (any, error) {
+func (h *Handler) executeTask(ctx context.Context, req *protocol.TaskRequestPayload, logger *slog.Logger) (any, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	switch req.Operation {
 	case protocol.TaskOpRead:
 		args, err := parseArgs[protocol.ReadArgs](req.Args)
@@ -196,7 +209,7 @@ func (h *Handler) executeTask(ctx context.Context, req *protocol.TaskRequestPayl
 		if err != nil {
 			return nil, fmt.Errorf("invalid mcp_call args: %w", err)
 		}
-		slog.Info("mcp_call task",
+		logger.Info("mcp_call task",
 			"server_name", args.Server.Name,
 			"server_transport", args.Server.Transport,
 			"server_url", args.Server.URL,
@@ -204,7 +217,7 @@ func (h *Handler) executeTask(ctx context.Context, req *protocol.TaskRequestPayl
 			"has_headers", len(args.Server.Headers) > 0,
 			"has_dynamic_headers", len(args.Server.DynamicHeaders) > 0,
 		)
-		return h.ws.MCPCall(ctx, args)
+		return h.ws.MCPCall(ctx, args, logger)
 
 	case protocol.TaskOpMCPListTools:
 		args, err := parseArgs[protocol.MCPListToolsArgs](req.Args)
@@ -278,12 +291,15 @@ func (h *Handler) handleMCPCall(ctx context.Context, msg *protocol.Message) erro
 		return fmt.Errorf("failed to unmarshal mcp call: %w", err)
 	}
 
+	// Create logger for MCP call (no task_id/trace_id available in this context)
+	logger := slog.Default()
+
 	go func() {
 		result, err := h.ws.MCPCall(ctx, &protocol.MCPCallArgs{
 			Server:   payload.Server,
 			ToolName: payload.ToolName,
 			Args:     payload.Arguments,
-		})
+		}, logger)
 		if err != nil {
 			h.sendMCPResult(payload.CallID, false, nil, err.Error())
 		} else {
